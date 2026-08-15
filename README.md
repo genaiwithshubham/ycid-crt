@@ -38,11 +38,10 @@ You must obtain proper rights or permission before reusing any footage. This app
 ## Installation
 
 ```bash
-git clone &lt;repository&gt;
+git clone
 cd youtube-celebrity-research
-python -m venv .venv
+uv init
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
 ```
 
 ## Search
@@ -98,48 +97,6 @@ python main.py build --celebrity "Jennifer Aniston"
 python main.py build -c "Jennifer Aniston" --min-score 7 --max-clips 5 -o clips/
 python main.py build -c "Jennifer Aniston" --include-rights-review
 ```
-
-## Project Structure
-
-youtube-celebrity-research/
-├── main.py                  # CLI entry point
-├── requirements.txt
-├── .env.example
-├── .gitignore
-├── src/
-│   ├── config.py
-│   ├── youtube/
-│   │   ├── client.py        # YouTube Data API client
-│   │   ├── search.py        # Search orchestration
-│   │   └── models.py        # Video & search config models
-│   ├── database/
-│   │   ├── database.py      # SQLAlchemy engine
-│   │   ├── models.py        # ORM models
-│   │   └── repository.py    # CRUD operations
-│   ├── scoring/
-│   │   └── relevance.py     # Configurable scoring
-│   ├── rights/
-│   │   └── classifier.py    # License classification
-│   ├── transcripts/
-│   │   ├── base.py          # Abstract provider
-│   │   └── providers.py     # YouTube & file providers
-│   ├── llm/
-│   │   ├── base.py          # Abstract LLM
-│   │   ├── openai_provider.py
-│   │   └── anthropic_provider.py
-│   ├── analysis/
-│   │   └── moments.py       # Moment detection
-│   └── export/
-│       ├── csv_export.py
-│       ├── json_export.py
-│       └── markdown_report.py
-└── tests/
-    ├── test_search.py
-    ├── test_scoring.py
-    ├── test_rights.py
-    └── test_analysis.py
-
-`pytest tests/ -v`
 
 ## Contributing
 
