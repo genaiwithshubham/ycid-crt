@@ -24,6 +24,22 @@ class LLMProvider(ABC):
         """Check if the provider is properly configured."""
         ...
 
+    @abstractmethod
+    def analyze_frames(
+        self, frame_descriptions: list[str], subject: str, subject_type: str = "person"
+    ) -> list[dict[str, Any]]:
+        """Analyze a list of frame descriptions and return interesting moments.
+
+        Args:
+            frame_descriptions: List of text descriptions of video frames
+            subject: Subject name or description
+            subject_type: "person" or "scene"
+
+        Returns:
+            List of moment dictionaries
+        """
+        ...
+
     @staticmethod
     def _parse_json_response(content: str) -> list[dict[str, Any]]:
         """Parse and validate LLM JSON response."""

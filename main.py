@@ -15,11 +15,13 @@ from src.export.csv_export import CSVExporter
 from src.export.json_export import JSONExporter
 from src.export.markdown_report import MarkdownReport
 from src.llm import get_llm_provider
+from src.llm.openai_provider import OpenAIProvider
 from src.rights.classifier import RightsClassifier
 from src.scoring.relevance import RelevanceScorer, ScoringConfig
 from src.transcripts.providers import YouTubeTranscriptProvider
 from src.utils import slugify
 from src.video.builder import VideoBuilder
+from src.video.frames import extract_frames, cleanup_frames
 from src.youtube.models import SearchConfig
 from src.youtube.search import VideoSearcher
 
@@ -111,13 +113,79 @@ def search(
         db.close()
 
 
+def _analyze_video_frames(
+    video_id: str,
+    video_title: str,
+    subject: str,
+    subject_type: str,
+    llm_provider,
+    frame_interval: int,
+    max_frames: int,
+) -> list[dict]:
+    """Analyze a video using frame extraction and image-to-text descriptions."""
+    logger = logging.getLogger(__name__)
+
+    # Extract frames
+    frame_paths = extract_frames(
+        video_id=video_id,
+        interval_seconds=frame_interval,
+        max_frames=max_frames,
+    )
+
+    if not frame_paths:
+        logger.warning("No frames extracted for %s", video_id)
+        return []
+
+    # Use OpenAI for image description (only provider with vision support)
+    vision_provider = OpenAIProvider()
+    if not vision_provider.is_available():
+        logger.error("OpenAI provider required for frame analysis but not available")
+        cleanup_frames(frame_paths)
+        return []
+
+    # Get descriptions for each frame
+    frame_descriptions = []
+    for i, frame_path in enumerate(frame_paths):
+        timestamp = i * frame_interval
+        try:
+            description = vision_provider.describe_image(
+                image_url=f"file://{frame_path.absolute()}",
+                prompt="Describe this video frame in detail. Focus on people, actions, text, objects, and setting.",
+            )
+            if description:
+                frame_descriptions.append({
+                    "timestamp": timestamp,
+                    "description": description,
+                })
+        except Exception as e:
+            logger.error("Failed to describe frame %d for %s: %s", i, video_id, e)
+
+    # Clean up frame files
+    cleanup_frames(frame_paths)
+
+    if not frame_descriptions:
+        logger.warning("No frame descriptions generated for %s", video_id)
+        return []
+
+    # Analyze frame descriptions using the main LLM provider
+    try:
+        moments = llm_provider.analyze_frames(frame_descriptions, subject, subject_type)
+        return moments
+    except Exception as e:
+        logger.error("Frame analysis failed for %s: %s", video_id, e)
+        return []
+
+
 @app.command()
 def analyze(
     subject: str = typer.Option(..., "--subject", "-s", help="Subject name or description"),
     subject_type: str = typer.Option("person", "--type", "-t", help="Subject type: person or scene"),
     max_videos: int = typer.Option(20, "--max-videos", help="Max videos to analyze"),
+    use_frames: bool = typer.Option(False, "--use-frames", help="Fallback to frame-based analysis when transcript missing"),
+    frame_interval: int = typer.Option(30, "--frame-interval", help="Seconds between frame extracts (default: 30)"),
+    max_frames: int = typer.Option(10, "--max-frames", help="Max frames per video (default: 10)"),
 ) -> None:
-    """Fetch transcripts and analyze for interesting moments."""
+    """Fetch transcripts and analyze for interesting moments. Falls back to frame analysis if enabled."""
     setup_logging()
     logger = logging.getLogger(__name__)
 
@@ -128,6 +196,10 @@ def analyze(
     missing = Config.validate()
     if missing:
         typer.echo(f"ERROR: Missing configuration: {', '.join(missing)}", err=True)
+        raise typer.Exit(1)
+
+    if use_frames and not Config.IMAGE_TO_TEXT_ENABLED:
+        typer.echo("ERROR: --use-frames requires IMAGE_TO_TEXT_ENABLED=true in config", err=True)
         raise typer.Exit(1)
 
     init_db()
@@ -151,6 +223,8 @@ def analyze(
 
         analyzed = 0
         for video in videos:
+            # Try transcript first
+            transcript = None
             existing = transcript_repo.get_by_video_id(video.video_id)
             if existing:
                 logger.info("Transcript already exists for %s", video.video_id)
@@ -173,19 +247,36 @@ def analyze(
                         timestamped=True,
                     )
 
-            if not transcript:
-                logger.info("Transcript unavailable for %s", video.video_id)
+            moments = []
+            if transcript:
+                try:
+                    moments = analyzer.analyze(transcript, subject, subject_type=subject_type)
+                    typer.echo(f"  ✓ {video.title[:60]}... ({len(moments)} moments from transcript)")
+                except Exception as e:
+                    logger.error("Transcript analysis failed for %s: %s", video.video_id, e)
+            elif use_frames and Config.IMAGE_TO_TEXT_ENABLED:
+                # Fallback to frame-based analysis
+                typer.echo(f"  ⏬ No transcript for {video.title[:60]}... extracting frames")
+                moments = _analyze_video_frames(
+                    video.video_id,
+                    video.title,
+                    subject,
+                    subject_type,
+                    llm_provider,
+                    frame_interval,
+                    max_frames,
+                )
+                if moments:
+                    typer.echo(f"  ✓ {video.title[:60]}... ({len(moments)} moments from frames)")
+                else:
+                    typer.echo(f"  ✗ {video.title[:60]}... (no moments found from frames)")
+            else:
+                logger.info("Transcript unavailable for %s and frame fallback disabled", video.video_id)
                 continue
 
-            try:
-                moments = analyzer.analyze(transcript, subject, subject_type=subject_type)
-                for moment in moments:
-                    moment_repo.save(video.video_id, moment)
-                analyzed += 1
-                typer.echo(f"  ✓ {video.title[:60]}... ({len(moments)} moments)")
-            except Exception as e:
-                logger.error("Analysis failed for %s: %s", video.video_id, e)
-                continue
+            for moment in moments:
+                moment_repo.save(video.video_id, moment)
+            analyzed += 1
 
         typer.echo(f"✅ Analyzed {analyzed} videos. Moments stored in database.")
 
@@ -301,6 +392,58 @@ def build(
         raise typer.Exit(1)
     finally:
         db.close()
+
+
+@app.command()
+def run(
+    subject: str = typer.Option(..., "--subject", "-s", help="Subject to search for (person or scene description)"),
+    subject_type: str = typer.Option("person", "--type", "-t", help="Subject type: person or scene"),
+    max_results: int = typer.Option(25, "--max-results", "-m", help="Maximum total search results"),
+    max_videos: int = typer.Option(20, "--max-videos", help="Max videos to analyze"),
+    use_frames: bool = typer.Option(True, "--use-frames/--no-frames", help="Enable frame-based fallback analysis"),
+    frame_interval: int = typer.Option(30, "--frame-interval", help="Seconds between frame extracts"),
+    max_frames: int = typer.Option(10, "--max-frames", help="Max frames per video"),
+    min_score: int = typer.Option(5, "--min-score", help="Minimum interest score (0-10) for clips"),
+    max_clips: int = typer.Option(10, "--max-clips", help="Maximum number of clips to build"),
+    output_dir: str = typer.Option("output", "--output-dir", "-o", help="Output directory for clips"),
+    include_rights_review: bool = typer.Option(True, "--include-rights-review/--exclude-rights-review", help="Include moments flagged for rights review"),
+) -> None:
+    """Run the full pipeline: search → analyze → report → build."""
+    # 1. Search
+    typer.echo("🔎 Step 1/4: Searching YouTube...")
+    search(
+        subject=subject,
+        subject_type=subject_type,
+        keywords="",
+        max_results=max_results,
+        fuzzy_dedup=False,
+    )
+    # 2. Analyze
+    typer.echo("\n🧠 Step 2/4: Analyzing transcripts/frames...")
+    analyze(
+        subject=subject,
+        subject_type=subject_type,
+        max_videos=max_videos,
+        use_frames=use_frames,
+        frame_interval=frame_interval,
+        max_frames=max_frames,
+    )
+    # 3. Report
+    typer.echo("\n📄 Step 3/4: Generating markdown report...")
+    report(
+        subject=subject,
+        format="markdown",
+    )
+    # 4. Build
+    typer.echo("\n🎬 Step 4/4: Building clips...")
+    build(
+        subject=subject,
+        min_score=min_score,
+        max_clips=max_clips,
+        output_dir=output_dir,
+        include_rights_review=include_rights_review,
+    )
+    typer.echo("\n✅ Pipeline completed.")
 
 
 @app.callback()

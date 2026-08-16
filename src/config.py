@@ -34,6 +34,12 @@ class Config:
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
+    # Image to Text
+    IMAGE_TO_TEXT_ENABLED: bool = os.getenv("IMAGE_TO_TEXT_ENABLED", "false").lower() == "true"
+    IMAGE_TO_TEXT_BASE_URL: str = os.getenv("IMAGE_TO_TEXT_BASE_URL", "https://integrate.api.nvidia.com/v1")
+    IMAGE_TO_TEXT_API_KEY: str = os.getenv("IMAGE_TO_TEXT_API_KEY", "")
+    IMAGE_TO_TEXT_MODEL: str = os.getenv("IMAGE_TO_TEXT_MODEL", "thinkingmachines/inkling")
+
     @classmethod
     def validate(cls) -> list[str]:
         """Validate required configuration. Returns list of missing configs."""
