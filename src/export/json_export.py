@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from src.database.repository import MomentRepository, VideoRepository
+from src.utils import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -91,15 +92,15 @@ class JSONExporter:
         logger.info("Exported %d clip candidates to %s", len(clips), path)
         return path
 
-    def export_all(self, db: Session, celebrity: str) -> dict[str, Path]:
-        """Export all data for a celebrity."""
+    def export_all(self, db: Session, subject: str) -> dict[str, Path]:
+        """Export all data for a subject."""
         video_repo = VideoRepository(db)
         moment_repo = MomentRepository(db)
 
-        videos = video_repo.get_all(celebrity=celebrity)
-        moments = moment_repo.get_all(celebrity=celebrity)
+        videos = video_repo.get_all(subject=subject)
+        moments = moment_repo.get_all(subject=subject)
 
-        base_name = celebrity.lower().replace(" ", "_")
+        base_name = slugify(subject)
         return {
             "videos": self.export_videos(videos, f"{base_name}_videos.json"),
             "moments": self.export_moments(moments, f"{base_name}_moments.json"),

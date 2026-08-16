@@ -30,13 +30,13 @@ class OllamaProvider(LLMProvider):
         except Exception:
             return False
 
-    def analyze_transcript(self, transcript: str, celebrity: str) -> list[dict[str, Any]]:
+    def analyze_transcript(self, transcript: str, subject: str, subject_type: str = "person") -> list[dict[str, Any]]:
         """Analyze transcript using a local Ollama model."""
         if not self.is_available():
             logger.error("Ollama provider not available: ensure Ollama is running")
             return []
 
-        prompt = self._build_analysis_prompt(transcript, celebrity)
+        prompt = self._build_analysis_prompt(transcript, subject, subject_type)
 
         try:
             response: ChatResponse = chat(
@@ -60,14 +60,14 @@ class OllamaProvider(LLMProvider):
             return []
 
     async def analyze_transcript_stream(
-        self, transcript: str, celebrity: str
+        self, transcript: str, subject: str, subject_type: str = "person"
     ) -> list[dict[str, Any]]:
         """Analyze transcript using streaming (async)."""
         if not self.is_available():
             logger.error("Ollama provider not available: ensure Ollama is running")
             return []
 
-        prompt = self._build_analysis_prompt(transcript, celebrity)
+        prompt = self._build_analysis_prompt(transcript, subject, subject_type)
         content = ""
 
         try:

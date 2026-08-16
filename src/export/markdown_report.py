@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from src.database.models import InterestingMomentDB, VideoDB
 from src.database.repository import MomentRepository, VideoRepository
+from src.utils import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -22,23 +23,23 @@ class MarkdownReport:
     def generate(
         self,
         db: Session,
-        celebrity: str,
+        subject: str,
         filename: str | None = None,
     ) -> Path:
         """Generate a full Markdown report."""
         if filename is None:
-            filename = f"{celebrity.lower().replace(' ', '_')}_report.md"
+            filename = f"{slugify(subject)}_report.md"
 
         path = self.output_dir / filename
 
         video_repo = VideoRepository(db)
         moment_repo = MomentRepository(db)
 
-        videos = video_repo.get_all(celebrity=celebrity)
-        moments = moment_repo.get_all(celebrity=celebrity)
+        videos = video_repo.get_all(subject=subject)
+        moments = moment_repo.get_all(subject=subject)
 
         lines = [
-            f"# {celebrity} — YouTube Interview Research Report",
+            f"# {subject} — YouTube Research Report",
             "",
             f"**Generated:** {__import__('datetime').datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
             f"**Videos analyzed:** {len(videos)}",

@@ -19,8 +19,22 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def init_db() -> None:
-    """Create all database tables."""
+    """Create all database tables and run idempotent migrations."""
     Base.metadata.create_all(bind=engine)
+
+    # Idempotent migration: add subject / subject_type columns if absent
+    with engine.connect() as conn:
+        rows = conn.execute(__import__("sqlalchemy").text("PRAGMA table_info(videos)")).fetchall()
+        existing_cols = {row[1] for row in rows}
+        if "subject" not in existing_cols:
+            conn.execute(__import__("sqlalchemy").text(
+                "ALTER TABLE videos ADD COLUMN subject VARCHAR(300) DEFAULT ''"
+            ))
+        if "subject_type" not in existing_cols:
+            conn.execute(__import__("sqlalchemy").text(
+                "ALTER TABLE videos ADD COLUMN subject_type VARCHAR(20) DEFAULT 'person'"
+            ))
+        conn.commit()
 
 
 def get_db():

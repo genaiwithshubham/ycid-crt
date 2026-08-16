@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from src.utils import slugify
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,7 +45,7 @@ class VideoBuilder:
     # Public API
     # ------------------------------------------------------------------
 
-    def build_clips(self, moments: list[Any], celebrity: str) -> list[ClipResult]:
+    def build_clips(self, moments: list[Any], subject: str) -> list[ClipResult]:
         """Download a direct clip for each moment. Returns one ClipResult per moment."""
         if not moments:
             return []
@@ -61,14 +63,14 @@ class VideoBuilder:
                 "For frame-accurate cuts install ffmpeg: brew install ffmpeg"
             )
 
-        celebrity_dir = self.output_dir / celebrity.lower().replace(" ", "_")
-        celebrity_dir.mkdir(parents=True, exist_ok=True)
+        subject_dir = self.output_dir / slugify(subject)
+        subject_dir.mkdir(parents=True, exist_ok=True)
 
         results: list[ClipResult] = []
         for m in moments:
             slug = m.topic[:40].lower().replace(" ", "_").replace("/", "-")
             filename = f"{m.video_id}_{m.start_seconds}s_{slug}.mp4"
-            clip_path = celebrity_dir / filename
+            clip_path = subject_dir / filename
 
             if clip_path.exists():
                 logger.info("Clip already exists, skipping: %s", clip_path)

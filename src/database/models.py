@@ -38,6 +38,8 @@ class VideoDB(Base):
     url = Column(String(200), nullable=False)
     search_query = Column(String(200), default="")
     relevance_score = Column(Integer, default=0)
+    subject = Column(String(300), default="")
+    subject_type = Column(String(20), default="person")
 
     # Rights
     license_type = Column(String(50), default="UNKNOWN")

@@ -37,6 +37,8 @@ class VideoRepository:
             existing.rights_notes = video.rights_notes
             existing.rights_verified = video.rights_verified
             existing.license_type = video.license_type or "UNKNOWN"
+            existing.subject = video.subject
+            existing.subject_type = video.subject_type
             self.db.commit()
             self.db.refresh(existing)
             return existing
@@ -60,17 +62,23 @@ class VideoRepository:
             rights_status=video.rights_status,
             rights_notes=video.rights_notes,
             rights_verified=video.rights_verified,
+            subject=video.subject,
+            subject_type=video.subject_type,
         )
         self.db.add(db_video)
         self.db.commit()
         self.db.refresh(db_video)
         return db_video
 
-    def get_all(self, celebrity: Optional[str] = None, limit: Optional[int] = None) -> list[VideoDB]:
-        """Fetch all videos, optionally filtered by celebrity name in title."""
+    def get_all(self, subject: Optional[str] = None, limit: Optional[int] = None) -> list[VideoDB]:
+        """Fetch all videos, filtered by subject (exact match first, title fallback)."""
         query = self.db.query(VideoDB)
-        if celebrity:
-            query = query.filter(VideoDB.title.ilike(f"%{celebrity}%"))
+        if subject:
+            exact = query.filter(VideoDB.subject == subject)
+            if exact.count() > 0:
+                query = exact
+            else:
+                query = query.filter(VideoDB.title.ilike(f"%{subject}%"))
         query = query.order_by(VideoDB.relevance_score.desc())
         if limit:
             query = query.limit(limit)
@@ -159,11 +167,19 @@ class MomentRepository:
             .all()
         )
 
-    def get_all(self, celebrity: Optional[str] = None, min_score: int = 0) -> list[InterestingMomentDB]:
+    def get_all(self, subject: Optional[str] = None, min_score: int = 0) -> list[InterestingMomentDB]:
         """Fetch all moments with optional filters."""
         query = self.db.query(InterestingMomentDB).join(VideoDB)
-        if celebrity:
-            query = query.filter(VideoDB.title.ilike(f"%{celebrity}%"))
+        if subject:
+            exact_ids = (
+                self.db.query(VideoDB.video_id)
+                .filter(VideoDB.subject == subject)
+                .subquery()
+            )
+            if self.db.query(VideoDB).filter(VideoDB.subject == subject).count() > 0:
+                query = query.filter(InterestingMomentDB.video_id.in_(exact_ids))
+            else:
+                query = query.filter(VideoDB.title.ilike(f"%{subject}%"))
         if min_score > 0:
             query = query.filter(InterestingMomentDB.interest_score >= min_score)
         return query.order_by(InterestingMomentDB.interest_score.desc()).all()

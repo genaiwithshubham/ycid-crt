@@ -21,15 +21,16 @@ class ScoringRule:
 class ScoringConfig:
     """Configuration for the relevance scoring system."""
 
-    celebrity: str
+    subject: str
+    subject_type: str = "person"
     rules: list[ScoringRule] = field(default_factory=list)
     min_duration_seconds: int = 300  # 5 minutes
     duration_bonus: int = 1
 
     DEFAULT_RULES: list[ScoringRule] = field(
         default_factory=lambda: [
-            ScoringRule("title_celebrity", 5, "celebrity name in title"),
-            ScoringRule("desc_celebrity", 3, "celebrity name in description"),
+            ScoringRule("title_subject", 5, "subject name in title"),
+            ScoringRule("desc_subject", 3, "subject name in description"),
             ScoringRule("title_interview", 3, 'interview" in title'),
             ScoringRule("title_podcast", 2, '"podcast" in title'),
             ScoringRule("title_appearance", 2, '"appearance" in title'),
@@ -49,10 +50,41 @@ class ScoringConfig:
 class RelevanceScorer:
     """Scores videos based on configurable rules."""
 
+    PERSON_KEYWORD_SCORES: dict = {
+        "interview": 3,
+        "podcast": 2,
+        "appearance": 2,
+        "talks about": 2,
+        "red carpet": 1,
+        "late night": 1,
+        "funny": 1,
+        "full interview": 2,
+        "behind the scenes": 2,
+        "story": 1,
+        "reveal": 1,
+        "secret": 1,
+    }
+
+    SCENE_KEYWORD_SCORES: dict = {
+        "scene": 3,
+        "full scene": 3,
+        "clip": 2,
+        "fight": 2,
+        "battle": 2,
+        "duel": 2,
+        "episode": 2,
+        "full episode": 3,
+        "hd": 1,
+        "movie clip": 2,
+    }
+
     def __init__(self, config: ScoringConfig):
         self.config = config
-        self.celebrity_lower = config.celebrity.lower()
-        self.celebrity_parts = [p.strip() for p in config.celebrity.lower().split() if len(p.strip()) > 2]
+        self.subject_lower = config.subject.lower()
+        self.subject_parts = [p.strip() for p in config.subject.lower().split() if len(p.strip()) > 2]
+        self._keyword_scores = (
+            self.PERSON_KEYWORD_SCORES if config.subject_type == "person" else self.SCENE_KEYWORD_SCORES
+        )
 
     def score(self, video: YouTubeVideo) -> int:
         """Calculate relevance score for a video."""
@@ -60,32 +92,18 @@ class RelevanceScorer:
         title_lower = video.title.lower()
         desc_lower = video.description.lower()
 
-        # Celebrity name in title
+        # Subject name in title
         if self._name_in_text(title_lower):
             score += 5
-            logger.debug("+5 for celebrity in title: %s", video.video_id)
+            logger.debug("+5 for subject in title: %s", video.video_id)
 
-        # Celebrity name in description
+        # Subject name in description
         if self._name_in_text(desc_lower):
             score += 3
-            logger.debug("+3 for celebrity in description: %s", video.video_id)
+            logger.debug("+3 for subject in description: %s", video.video_id)
 
         # Keyword bonuses in title
-        keyword_scores = {
-            "interview": 3,
-            "podcast": 2,
-            "appearance": 2,
-            "talks about": 2,
-            "red carpet": 1,
-            "late night": 1,
-            "funny": 1,
-            "full interview": 2,
-            "behind the scenes": 2,
-            "story": 1,
-            "reveal": 1,
-            "secret": 1,
-        }
-        for keyword, points in keyword_scores.items():
+        for keyword, points in self._keyword_scores.items():
             if keyword in title_lower:
                 score += points
                 logger.debug("+%d for '%s' in title: %s", points, keyword, video.video_id)
@@ -104,12 +122,12 @@ class RelevanceScorer:
         return score
 
     def _name_in_text(self, text: str) -> bool:
-        """Check if celebrity name appears in text."""
-        if self.celebrity_lower in text:
+        """Check if subject name appears in text."""
+        if self.subject_lower in text:
             return True
         # For multi-word names, check all significant parts
-        if len(self.celebrity_parts) > 1:
-            return all(part in text for part in self.celebrity_parts)
+        if len(self.subject_parts) > 1:
+            return all(part in text for part in self.subject_parts)
         return False
 
     def score_videos(self, videos: list[YouTubeVideo]) -> list[YouTubeVideo]:

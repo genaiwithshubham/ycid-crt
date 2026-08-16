@@ -19,7 +19,8 @@ class MomentAnalyzer:
     def analyze(
         self,
         transcript: TranscriptResult,
-        celebrity: str,
+        subject: str,
+        subject_type: str = "person",
     ) -> list[dict[str, Any]]:
         """Analyze a transcript and return interesting moments."""
         if not transcript.segments:
@@ -39,7 +40,7 @@ class MomentAnalyzer:
             text = text[:max_chars] + "\n...[transcript truncated]"
 
         logger.info("Analyzing transcript for %s (%d chars)", transcript.video_id, len(text))
-        moments = self.llm.analyze_transcript(text, celebrity)
+        moments = self.llm.analyze_transcript(text, subject, subject_type)
 
         # Enrich moments with computed fields
         for moment in moments:
@@ -72,13 +73,14 @@ class MomentAnalyzer:
     def analyze_batch(
         self,
         transcripts: list[TranscriptResult],
-        celebrity: str,
+        subject: str,
+        subject_type: str = "person",
     ) -> list[dict[str, Any]]:
         """Analyze multiple transcripts."""
         all_moments = []
         for transcript in transcripts:
             try:
-                moments = self.analyze(transcript, celebrity)
+                moments = self.analyze(transcript, subject, subject_type)
                 all_moments.extend(moments)
             except Exception as e:
                 logger.error("Failed to analyze transcript %s: %s", transcript.video_id, e)

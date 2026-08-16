@@ -32,13 +32,13 @@ class OpenAIProvider(LLMProvider):
     def is_available(self) -> bool:
         return bool(self.api_key)
 
-    def analyze_transcript(self, transcript: str, celebrity: str) -> list[dict[str, Any]]:
+    def analyze_transcript(self, transcript: str, subject: str, subject_type: str = "person") -> list[dict[str, Any]]:
         """Analyze transcript using OpenAI."""
         if not self.is_available():
             logger.error("OpenAI provider not available: missing API key")
             return []
 
-        prompt = self._build_analysis_prompt(transcript, celebrity)
+        prompt = self._build_analysis_prompt(transcript, subject, subject_type)
 
         try:
             response = self.client.chat.completions.create(

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from src.database.models import InterestingMomentDB, VideoDB
 from src.database.repository import MomentRepository, VideoRepository
+from src.utils import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -78,15 +79,16 @@ class CSVExporter:
         logger.info("Exported %d moments to %s", len(moments), path)
         return path
 
-    def export_all(self, db: Session, celebrity: str) -> dict[str, Path]:
-        """Export all data for a celebrity."""
+    def export_all(self, db: Session, subject: str) -> dict[str, Path]:
+        """Export all data for a subject."""
         video_repo = VideoRepository(db)
         moment_repo = MomentRepository(db)
 
-        videos = video_repo.get_all(celebrity=celebrity)
-        moments = moment_repo.get_all(celebrity=celebrity)
+        videos = video_repo.get_all(subject=subject)
+        moments = moment_repo.get_all(subject=subject)
 
+        base = slugify(subject)
         return {
-            "videos": self.export_videos(videos, f"{celebrity.lower().replace(' ', '_')}_videos.csv"),
-            "moments": self.export_moments(moments, f"{celebrity.lower().replace(' ', '_')}_moments.csv"),
+            "videos": self.export_videos(videos, f"{base}_videos.csv"),
+            "moments": self.export_moments(moments, f"{base}_moments.csv"),
         }
